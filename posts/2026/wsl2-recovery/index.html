@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WindowsからWSL2へドラッグ＆ドロップした直後にWSL2が起動しなくなった話と復旧手順 | t49n's blog</title>
+  <meta name="description" content="WindowsエクスプローラーからWSL2へファイルをドラッグ＆ドロップした後、WSL2が起動しなくなった際の復旧手順と、その後気をつけていることの記録。">
+  <link rel="stylesheet" href="../../../assets/css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="site-title" href="../../../">t49n's blog</a>
+  </header>
+
+  <main>
+    <article>
+      <header class="post-header">
+        <h1>WindowsからWSL2へドラッグ＆ドロップした直後にWSL2が起動しなくなった話と復旧手順</h1>
+        <time datetime="2026-10-05">2026-10-05</time>
+      </header>
+
+      <div class="post-body">
+        <p>WindowsエクスプローラーからWSL2（Ubuntu）のディレクトリへ画像をドラッグ＆ドロップした際、突然WSL2が起動しなくなる不具合に見舞われました。</p>
+        <p>ネット上に類似の症例が見当たらず解決に苦戦したため、実際に試行錯誤した復旧手順と、その後気をつけていることを記録として残します。</p>
+        <p><strong>結論:</strong> Windows 11のISOファイルを使ったインプレース修復を行った後、<code>wsl --uninstall</code> と <code>wsl --install</code> でWSLを入れ直したところ復旧しました。Ubuntu内のデータも消えずに残っていました。</p>
+
+        <h2>何が起きたか</h2>
+        <p>WSL2上のプロジェクトディレクトリに、Windowsのエクスプローラーから画像ファイルをドラッグ＆ドロップで配置しました。</p>
+        <p>その直後からWSL2が完全に起動しなくなり、開発環境（Ubuntu）にアクセスできない状態になりました。</p>
+        <p>起動しようとすると「ファイルが見つかりません」といった趣旨のエラーが表示されていたはずですが、数か月前のことで正確な文言は覚えていません。WindowsやWSLのバージョンも控えていませんでした。</p>
+
+        <h2>試した手順</h2>
+
+        <h3>1. Windowsの機能のオン/オフ切り替え</h3>
+        <p><strong>実施内容:</strong> 「Windowsの機能の有効化または無効化」から「Linux用Windowsサブシステム」と「仮想マシンプラットフォーム」をオフにし、再起動後に再びオン。</p>
+        <p><strong>結果:</strong> 処理が進まなくなり、復旧せず。</p>
+        <p>機能の切り替えすら終わらないことをGeminiに相談したところ、Windows自体が壊れているかもしれないと言われたため、ここからはWindows本体の修復を試しました。</p>
+
+        <h3>2. <code>sfc /scannow</code> によるシステム修復</h3>
+        <p><strong>実施内容:</strong> Windowsのシステムファイルが破損していないかを検査し、壊れていれば正常なコピーで置き換えるコマンド <code>sfc /scannow</code>（System File Checker）を、管理者権限で実行。</p>
+        <p><strong>結果:</strong> 処理自体は正常に完了したものの、WSL2は起動せず。</p>
+
+        <h3>3. DISMによるイメージ修復</h3>
+        <p><strong>実施内容:</strong> Windowsのシステムイメージを管理・修復するツールDISM（Deployment Image Servicing and Management）で、SFCが修復に使う元データ（コンポーネントストア）をWindows Updateなどから取得したファイルで修復するコマンド <code>dism /online /cleanup-image /restorehealth</code> を実行。</p>
+        <p><strong>結果:</strong> 「修復ソースが見つかりませんでした」というエラーで失敗。</p>
+
+        <h3>4. Windows 11のインプレース修復</h3>
+        <p><strong>実施内容:</strong> DISMの修復ソース不足を補うため、<a href="https://www.microsoft.com/ja-jp/software-download/windows11">Microsoft公式サイト</a>からWindows 11のISOファイルをダウンロードし、ISO内の <code>setup.exe</code> を実行。個人用ファイルとアプリを引き継ぐ設定で、現在のWindowsの上からWindowsを上書きインストール（インプレース修復）。</p>
+        <p><strong>結果:</strong> インプレース修復が完了。</p>
+
+        <h3>5. WSLの再インストール</h3>
+        <p><strong>実施内容:</strong> WSL本体のパッケージをアンインストールするコマンド <code>wsl --uninstall</code> を実行した後、<code>wsl --install</code> で改めてWSLをインストール。</p>
+        <p><strong>結果:</strong> WSL2が正常に起動し、開発環境が復旧。Ubuntu内のデータも残っていた。</p>
+        <p>なお、インプレース修復が本当に必要だったのか、WSLの入れ直しだけで直ったのかは確認できていません。インプレース修復は時間のかかる作業なので、同じ症状の方はまず手順5の <code>wsl --uninstall</code> から試してみてもよいかもしれません。</p>
+
+        <h2>その後気をつけていること</h2>
+        <p>原因ははっきりしていませんが、念のため、WindowsとWSL2の間でファイルを受け渡すときはエクスプローラーでのドラッグ＆ドロップを避け、コマンドで操作するようにしています。</p>
+        <p>たとえば、Windows側の画像をWSL2へコピーする場合は次のようにします。</p>
+        <pre><code>cp /mnt/c/Users/username/Pictures/sample.png ./</code></pre>
+      </div>
+
+      <footer class="post-footer">
+        <a href="../../../">&larr; 記事一覧へ</a>
+      </footer>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <p>&copy; 2026 t49n</p>
+  </footer>
+</body>
+</html>
